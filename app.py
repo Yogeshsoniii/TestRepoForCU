@@ -5,6 +5,7 @@ import os
 from azure.identity import get_bearer_token_provider
 from azure.identity import ManagedIdentityCredential
 from typing import Optional
+import time
 
 app = FastAPI(title="Content Understanding API")
 
@@ -133,7 +134,8 @@ def call_analyzer(analyzer_name: str, file_bytes: bytes, timeout: int = 120):
             {
                 "data": base64.b64encode(file_bytes).decode("utf-8")
             }
-        ]
+        ],
+        "modelDeployments":MODEL_DEPLOYMENTS
     }
 
     response = requests.post(
@@ -184,6 +186,7 @@ async def analyze_document(file: UploadFile = File(None)):
         file_bytes=file_bytes,
         timeout=120
     )
+
 
 
 
