@@ -31,6 +31,54 @@ def get_aad_headers():
         "Content-Type": "application/json",
     }
 
+def poll_analyzer_result_by_id(
+    result_id: str,
+    timeout: int = 120,
+    interval: int = 2,
+):
+    """
+    Polls analyzerResults endpoint until analysis completes.
+    """
+    result_url = (
+        f"{AZURE_ENDPOINT}/contentunderstanding/analyzerResults/"
+        f"{result_id}?api-version={API_VERSION}"
+    )
+
+    start_time = time.time()
+
+    while True:
+        if time.time() - start_time > timeout:
+            raise HTTPException(
+                status_code=408,
+                detail="Analyzer result polling timed out"
+            )
+
+        response = requests.get(
+            url=result_url,
+            headers=get_aad_headers(),
+            timeout=30
+        )
+
+        if not response.ok:
+            raise HTTPException(
+                status_code=response.status_code,
+                detail=response.text
+            )
+
+        result_json = response.json()
+        status = result_json.get("status", "").lower()
+
+        if status == "succeeded":
+            return result_json
+
+        if status in ("failed", "canceled"):
+            raise HTTPException(
+                status_code=500,
+                detail=result_json
+            )
+
+        time.sleep(interval)
+
 def get_file_bytes(file: UploadFile | None) -> bytes:
     """C
     Use uploaded file if present, otherwise fallback to local root file.
@@ -75,32 +123,44 @@ def load_file_bytes(
 
 
 def call_analyzer(analyzer_name: str, file_bytes: bytes, timeout: int = 120):
-    url = (
+    analyze_url = (
         f"{AZURE_ENDPOINT}/contentunderstanding/analyzers/"
         f"{analyzer_name}:analyze?api-version={API_VERSION}"
     )
 
     payload = {
         "inputs": [
-            {"data": base64.b64encode(file_bytes).decode("utf-8")}
-        ],
-        "modelDeployments":MODEL_DEPLOYMENTS
+            {
+                "data": base64.b64encode(file_bytes).decode("utf-8")
+            }
+        ]
     }
 
     response = requests.post(
-        url=url,
+        url=analyze_url,
         headers=get_aad_headers(),
         json=payload,
-        timeout=timeout
+        timeout=30
     )
 
-    if not response.ok:
+    if response.status_code not in (200, 202):
         raise HTTPException(
             status_code=response.status_code,
             detail=response.text
         )
 
-    return response.json()
+    body = response.json()
+    result_id = body.get("id")
+
+    if not result_id:
+        # Rare synchronous completion
+        return body
+
+    return poll_analyzer_result_by_id(
+        result_id=result_id,
+        timeout=timeout
+    )
+
 
 
 @app.post("/analyze/layout")
@@ -124,6 +184,7 @@ async def analyze_document(file: UploadFile = File(None)):
         file_bytes=file_bytes,
         timeout=120
     )
+
 
 
 
