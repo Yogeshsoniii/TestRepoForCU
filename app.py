@@ -84,7 +84,7 @@ def call_analyzer(analyzer_name: str, file_bytes: bytes, timeout: int = 120):
         "inputs": [
             {"data": base64.b64encode(file_bytes).decode("utf-8")}
         ],
-        MODEL_DEPLOYMENTS
+        "modelDeployments":MODEL_DEPLOYMENTS
     }
 
     response = requests.post(
@@ -124,5 +124,6 @@ async def analyze_document(file: UploadFile = File(None)):
         file_bytes=file_bytes,
         timeout=120
     )
+
 
 
